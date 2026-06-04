@@ -1,5 +1,5 @@
-<!DOCTYPE html>                note from developer: DONT PLAY NUPI GAMES'S GAMES! instead go to https://docs.google.com/document/d/1_lDprAwUN3_y4KlKtLBLUrTL__ksFedXCegSxsHLik4/edit?usp=sharing
-<html lang="en">  and note TO developer: sino can u make pajikhooked and ewqq38 collaboraters
+<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -37,9 +37,10 @@
 
   CHEAT CODES (open with ` or ~ key, or tap the small "admin" in the corner)
   --------------------------------------------------------------------
-    *** ADMINONLY must be entered FIRST to unlock all other codes ***
+    *** A D M I N O N L Y must be entered FIRST to unlock all other codes ***
+    (typed with single spaces between each letter)
 
-    ADMINONLY     -> unlocks the admin console
+    A D M I N O N L Y -> unlocks the admin console
     GREEDISGOOD   -> +1,000,000 biomass
     GIGAGAIN      -> +100,000,000 biomass
     INFINITESOUP  -> +1 trillion biomass
@@ -1932,6 +1933,63 @@ const PERKS = [
     base:25, growCost:3.0, max:3,
     apply:(lv) => ({ startStageBoost: lv }) },
 ];
+
+// GENOME SEQUENCES: one-time endgame purchases.
+// Unlock when you've maxed at least N regular perks. Each gives a strong bonus
+// AND a real downside - so they're choices, not strictly upgrades.
+// Locked entries display as locked silhouettes until threshold is met.
+//
+// Goal: give RP something to do after perks are maxed, without making the
+// game "easier" - each sequence reshapes how you play.
+const SEQUENCES = [
+  { id:'seq_overdrive',   name:'OVERDRIVE GENE',
+    flavor:'A tireless protein. The specimen never sleeps. Neither do you.',
+    desc:'+200% click power. Passive income halved.',
+    unlockPerksMaxed: 3,  cost: 5000,
+    apply:(b) => { b.clickMult *= 3.0; b.passiveMult *= 0.5; } },
+
+  { id:'seq_torpor',      name:'TORPOR HELIX',
+    flavor:'It dreams of biomass. The dream is profitable.',
+    desc:'+200% passive income. Click power halved.',
+    unlockPerksMaxed: 3,  cost: 5000,
+    apply:(b) => { b.passiveMult *= 3.0; b.clickMult *= 0.5; } },
+
+  { id:'seq_glasscannon', name:'GLASS CANNON STRAND',
+    flavor:'Crit damage triples. The specimen rarely warms up, but when it does.',
+    desc:'+200% crit damage, +10% crit chance. Base click halved.',
+    unlockPerksMaxed: 4,  cost: 12000,
+    apply:(b) => { b.critMultBonus += 10; b.critBonus += 0.10; b.clickMult *= 0.5; } },
+
+  { id:'seq_thrift',      name:'THRIFT CHROMOSOME',
+    flavor:'A frugal protein. The specimen reuses everything it absorbs.',
+    desc:'All costs -50%. Apex Tier bonuses halved.',
+    unlockPerksMaxed: 5,  cost: 25000,
+    apply:(b) => { b.costMult *= 0.5; b.apexDampen = 0.5; } },
+
+  { id:'seq_inheritance', name:'INHERITANCE LOOP',
+    flavor:'A memory that survives the dissolution. You wake remembering teeth.',
+    desc:'Keep 1% of biomass through rebirth (uncapped). Rebirth Points gain -25%.',
+    unlockPerksMaxed: 6,  cost: 40000,
+    apply:(b) => { b.keepBiomassPct = 0.01; b.fkMult *= 0.75; } },
+
+  { id:'seq_dilation',    name:'TIME DILATION CHAIN',
+    flavor:'Hours pass inside. We were only gone for lunch.',
+    desc:'Offline cap raised to 8h. Online passive rate -15%.',
+    unlockPerksMaxed: 6,  cost: 50000,
+    apply:(b) => { b.offlineCapMult = 4; b.passiveMult *= 0.85; } },
+
+  { id:'seq_apex',        name:'APEX FORK',
+    flavor:'The lab branches. There were always two specimens. One was you.',
+    desc:'Apex Tier bonuses doubled. Anomalies arrive twice as often.',
+    unlockPerksMaxed: 8,  cost: 100000,
+    apply:(b) => { b.apexBoost = 2.0; b.anomalyFreq = 2.0; } },
+
+  { id:'seq_kovacs',      name:'KOVACS PROTOCOL',
+    flavor:'GEN. KOVACS authorized this. Then GEN. KOVACS disappeared.',
+    desc:'+500% click and passive. Anomalies require 5x more clicks to suppress.',
+    unlockPerksMaxed: 10, cost: 250000,
+    apply:(b) => { b.clickMult *= 6.0; b.passiveMult *= 6.0; b.anomalyClicks = 5.0; } },
+];
 // MUTATION CODEX: collectible flavor entries with permanent passive bonuses.
 // Each unlocks at a grandLifetime threshold OR a custom trigger. Discovery is
 // passive - you don't pursue them directly. Pure long-tail content for players
@@ -2175,6 +2233,7 @@ const DEFAULT_STATE = () => ({
   codex:         {},                    // {id:true} for unlocked codex entries
   anomalyClicksRemaining: 0,            // ANOMALY: clicks needed to suppress (0 = inactive)
   anomalyNextRollAt: 0,                 // wall-time of next anomaly check
+  sequences: {},                        // {id:true} for purchased genome sequences
 });
 
 let state = DEFAULT_STATE();
@@ -2210,6 +2269,31 @@ function perkBundle() {
 // NEW: stage-derived bundle (just the current stage's flat numbers)
 function stageBundle() {
   return STAGES[currentStage()];
+}
+
+// How many perks the player has maxed out — gates the genome sequences.
+function maxedPerkCount() {
+  let n = 0;
+  for (const p of PERKS) if ((state.perks[p.id] || 0) >= p.max) n++;
+  return n;
+}
+
+// Genome sequence bundle. Sequences carry tradeoffs - the apply() handlers
+// can read/write any field on the bundle. We include fields beyond the usual
+// click/passive: apexDampen, apexBoost, keepBiomassPct, offlineCapMult,
+// anomalyFreq, anomalyClicks.
+function sequenceBundle() {
+  const b = {
+    clickMult:1, passiveMult:1, costMult:1, fkMult:1,
+    critBonus:0, critMultBonus:0,
+    apexDampen:1, apexBoost:1,
+    keepBiomassPct:0, offlineCapMult:1,
+    anomalyFreq:1, anomalyClicks:1,
+  };
+  for (const seq of SEQUENCES) {
+    if (state.sequences && state.sequences[seq.id]) seq.apply(b);
+  }
+  return b;
 }
 
 // NEW: achievement bundle - small permanent multipliers from unlocked trophies.
@@ -2255,12 +2339,13 @@ function apexBundle() {
 function computeClickPower() {
   const bundle = perkBundle();
   const s = stageBundle();
+  const sq = sequenceBundle();
   let pwr = 0.5; // baseline (was 1; clicking is supposed to support, not dominate)
   for (const m of MUTATIONS) {
     pwr += (state.mutations[m.id] || 0) * m.power;
   }
   // Global 0.7x click nerf — applied after all multiplicative stacks.
-  return pwr * bundle.clickMult * s.clickMult * apexBundle().clickMult * eventBundle().clickMult * achvBundle().clickMult * codexBundle().clickMult * 0.7;
+  return pwr * bundle.clickMult * s.clickMult * apexBundle().clickMult * eventBundle().clickMult * achvBundle().clickMult * codexBundle().clickMult * sq.clickMult * 0.7;
 }
 
 function computePassive() {
@@ -2270,16 +2355,17 @@ function computePassive() {
   for (const u of UPGRADES) {
     pps += (state.upgrades[u.id] || 0) * u.rate;
   }
-  return pps * bundle.passiveMult * state.passiveMultCheat * s.passiveMult * apexBundle().passiveMult * eventBundle().passiveMult * achvBundle().passiveMult * codexBundle().passiveMult;
+  return pps * bundle.passiveMult * state.passiveMultCheat * s.passiveMult * apexBundle().passiveMult * eventBundle().passiveMult * achvBundle().passiveMult * codexBundle().passiveMult * sequenceBundle().passiveMult;
 }
 
 function costOf(def, owned) {
   if (state.godMode) return 0;
   const bundle = perkBundle();
   const s = stageBundle();
+  const sq = sequenceBundle();
   // ANOMALY: all costs spike 5x while a containment breach is active.
   const anomalyMult = (state.anomalyClicksRemaining > 0) ? 5 : 1;
-  return Math.ceil(def.base * Math.pow(def.grow, owned) * bundle.costMult * s.costMult * eventBundle().costMult * anomalyMult);
+  return Math.ceil(def.base * Math.pow(def.grow, owned) * bundle.costMult * s.costMult * eventBundle().costMult * sq.costMult * anomalyMult);
 }
 
 function perkCost(p) {
@@ -2292,7 +2378,7 @@ function rpOnRebirth() {
   // RP accumulation at very high lifetimes too, so rebirthing isn't a free
   // exponential ladder. Was: sqrt(lifetime/1e6).
   const base = Math.floor(Math.pow(state.lifetime / 1e9, 0.5));
-  return Math.floor(base * perkBundle().fkMult);
+  return Math.floor(base * perkBundle().fkMult * sequenceBundle().fkMult);
 }
 
 // ---------- STAGE / EVOLUTION ----------
@@ -3295,10 +3381,11 @@ function toggleAdmin() {
 // can be run any time.
 const CHEATS = {
   // ----- ADMIN PANEL access -----
-  // ADMINONLY unlocks the panel (one-time auth) and opens it; afterwards you
-  // can re-open it from the // ADMIN button or by re-typing ADMINONLY.
-  ADMINONLY:   { repeatable: true,
+  // The auth code is intentionally spaced to invalidate old leaked codes.
+  // Players must type: A D M I N O N L Y (with single spaces between each letter).
+  'A D M I N O N L Y': { repeatable: true,
                  fn: () => { state.adminUnlocked = true;
+                             state.adminCodeVersion = 2;
                              openAdminPanel();
                              return '// ACCESS GRANTED. ADMIN PANEL OPEN.'; } },
   LOCK:        { repeatable: true,
@@ -3427,6 +3514,12 @@ function load() {
     for (const m of MUTATIONS) if (state.mutations[m.id] == null) state.mutations[m.id] = 0;
     for (const u of UPGRADES)  if (state.upgrades[u.id]  == null) state.upgrades[u.id]  = 0;
     for (const p of PERKS)     if (state.perks[p.id]     == null) state.perks[p.id]     = 0;
+    // MIGRATION: anyone authenticated with the old ADMINONLY code gets locked
+    // out. They must re-enter the new spaced code to get the panel back.
+    // adminCodeVersion is only set by the new code, so missing/<2 means old auth.
+    if (!parsed.adminCodeVersion || parsed.adminCodeVersion < 2) {
+      state.adminUnlocked = false;
+    }
     return true;
   } catch(e) { return false; }
 }
@@ -3840,4 +3933,4 @@ start();
 
 </script>
 </body>
-</html>
+</html> note from developer: DONT PLAY NUPI GAMES'S GAMES! instead go to https://docs.google.com/document/d/1_lDprAwUN3_y4KlKtLBLUrTL__ksFedXCegSxsHLik4/edit?usp=sharing
