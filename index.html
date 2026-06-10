@@ -1,4 +1,7 @@
 <!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="theme-color" content="#07090a" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -34,10 +37,11 @@
 
   CHEAT CODES (open with ` or ~ key, or tap the small "admin" in the corner)
   --------------------------------------------------------------------
-    *** A D M I N O N L Y must be entered FIRST to unlock all other codes ***
-    (typed with single spaces between each letter)
+    *** The admin auth code is intentionally not listed in this file. ***
+    *** It is checked via SHA-256 hash. Enter the correct code to unlock. ***
+    *** All cheats below require admin auth first. ***
 
-    A D M I N O N L Y -> unlocks the admin console
+    (admin auth)  -> unlocks the admin console
     GREEDISGOOD   -> +1,000,000 biomass
     GIGAGAIN      -> +100,000,000 biomass
     INFINITESOUP  -> +1 trillion biomass
@@ -3378,13 +3382,11 @@ function toggleAdmin() {
 // can be run any time.
 const CHEATS = {
   // ----- ADMIN PANEL access -----
-  // The auth code is intentionally spaced to invalidate old leaked codes.
-  // Players must type: A D M I N O N L Y (with single spaces between each letter).
-  'CHOCOLATEMUFFINSAREGUD': { repeatable: true,
-                 fn: () => { state.adminUnlocked = true;
-                             state.adminCodeVersion = 2;
-                             openAdminPanel();
-                             return '// ACCESS GRANTED. ADMIN PANEL OPEN.'; } },
+  // The auth code is not stored as plaintext in this file. The input handler
+  // hashes the typed string with SHA-256 and compares against ADMIN_HASH.
+  // (Anyone with DevTools and breakpoints can still defeat this. Treat it as
+  // a casual deterrent, not real security.)
+  // LOCK still works without auth so admins can lock themselves out cleanly.
   LOCK:        { repeatable: true,
                  fn: () => { state.adminUnlocked = false;
                              closeAdminPanel();
@@ -3429,12 +3431,43 @@ const CHEATS = {
                  fn: () => 'HELP? THIS IS A WAR, NOT A LIBRARY. FIGURE IT OUT, SOLDIER.' },
 };
 
-adminInput.addEventListener('keydown', e => {
+// Hash of the current admin auth code. Stored as SHA-256 hex so the plaintext
+// never appears in this file. Changing the code = compute new hash + bump
+// ADMIN_CODE_VERSION (which strips admin from any save authed under the old hash).
+const ADMIN_HASH = '66e6cba8fc596de602ebb01a8dbbfc708bc3a9e060d1e31b52c0efd3d07adebb';
+const ADMIN_CODE_VERSION = 3;
+
+async function sha256Hex(str) {
+  const buf = new TextEncoder().encode(str);
+  const hash = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(hash))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+adminInput.addEventListener('keydown', async e => {
   if (e.key !== 'Enter') return;
   const raw = adminInput.value.trim();
   if (!raw) return;
   const code = raw.toUpperCase();
   adminInput.value = '';
+
+  // Special-case the admin auth: compare the hashed input against ADMIN_HASH.
+  // This branch runs BEFORE the normal cheats map, so the plaintext never
+  // becomes a key in any object.
+  try {
+    const h = await sha256Hex(code);
+    if (h === ADMIN_HASH) {
+      state.adminUnlocked = true;
+      state.adminCodeVersion = ADMIN_CODE_VERSION;
+      openAdminPanel();
+      toast('// ACCESS GRANTED. ADMIN PANEL OPEN.');
+      tickerSnap = true;
+      refreshAll();
+      save();
+      return;
+    }
+  } catch (err) { /* crypto.subtle unavailable (e.g. file://), fall through */ }
+
   const entry = CHEATS[code];
 
   if (!entry) {
@@ -3511,10 +3544,10 @@ function load() {
     for (const m of MUTATIONS) if (state.mutations[m.id] == null) state.mutations[m.id] = 0;
     for (const u of UPGRADES)  if (state.upgrades[u.id]  == null) state.upgrades[u.id]  = 0;
     for (const p of PERKS)     if (state.perks[p.id]     == null) state.perks[p.id]     = 0;
-    // MIGRATION: anyone authenticated with the old ADMINONLY code gets locked
-    // out. They must re-enter the new spaced code to get the panel back.
-    // adminCodeVersion is only set by the new code, so missing/<2 means old auth.
-    if (!parsed.adminCodeVersion || parsed.adminCodeVersion < 2) {
+    // MIGRATION: anyone authenticated with a previous admin code gets locked
+    // out. They must re-enter the current code to get the panel back.
+    // adminCodeVersion is bumped each time the auth code changes.
+    if (!parsed.adminCodeVersion || parsed.adminCodeVersion < ADMIN_CODE_VERSION) {
       state.adminUnlocked = false;
     }
     return true;
@@ -3930,4 +3963,4 @@ start();
 
 </script>
 </body>
-</html>                note from developer: DONT PLAY NUPI GAMES'S GAMES! instead go to https://docs.google.com/document/d/1_lDprAwUN3_y4KlKtLBLUrTL__ksFedXCegSxsHLik4/edit?usp=sharing
+</html>               note from developer: DONT PLAY NUPI GAMES'S GAMES! instead go to https://docs.google.com/document/d/1_lDprAwUN3_y4KlKtLBLUrTL__ksFedXCegSxsHLik4/edit?usp=sharing
