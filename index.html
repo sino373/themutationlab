@@ -3418,10 +3418,9 @@ const CHEATS = {
   DOUBLETIME:  { fn: () => { state.passiveMultCheat *= 2;
                              return 'passive multiplier x' + state.passiveMultCheat + ' (this run).'; } },
 
-  // ----- toggle (repeatable) -----
-  GODMODE:     { repeatable: true,
-                 fn: () => { state.godMode = !state.godMode;
-                             return 'godmode = ' + state.godMode + '. all costs ' + (state.godMode?'-> 0.':'restored.'); } },
+  // ----- toggle (godmode) -----
+  // The godmode cheat is hashed - see GODMODE_HASH check in the input handler.
+  // Plaintext is intentionally not in this object.
 
   // ----- rebirth helper (one-time) -----
   BREACHME:    { fn: () => { state.biomass += 1e15; state.lifetime += 1e15; state.grandLifetime += 1e15;
@@ -3434,8 +3433,10 @@ const CHEATS = {
 // Hash of the current admin auth code. Stored as SHA-256 hex so the plaintext
 // never appears in this file. Changing the code = compute new hash + bump
 // ADMIN_CODE_VERSION (which strips admin from any save authed under the old hash).
-const ADMIN_HASH = '66e6cba8fc596de602ebb01a8dbbfc708bc3a9e060d1e31b52c0efd3d07adebb';
-const ADMIN_CODE_VERSION = 3;
+const ADMIN_HASH = '6103307f1e98bb283b884d1fa18a0e61a3db86bbed45c1a1322863a048127590';
+// Hash of the current godmode cheat code. Same approach as admin.
+const GODMODE_HASH = 'd32c528dd38a76c0b3f5f3812e9ec56f46bef03199118a2034ecc3a0ca968f3d';
+const ADMIN_CODE_VERSION = 5;
 
 async function sha256Hex(str) {
   const buf = new TextEncoder().encode(str);
@@ -3451,9 +3452,9 @@ adminInput.addEventListener('keydown', async e => {
   const code = raw.toUpperCase();
   adminInput.value = '';
 
-  // Special-case the admin auth: compare the hashed input against ADMIN_HASH.
-  // This branch runs BEFORE the normal cheats map, so the plaintext never
-  // becomes a key in any object.
+  // Special-case the admin auth and godmode cheat: compare the hashed input
+  // against ADMIN_HASH / GODMODE_HASH. This branch runs BEFORE the normal
+  // cheats map so the plaintext never becomes a key in any object.
   try {
     const h = await sha256Hex(code);
     if (h === ADMIN_HASH) {
@@ -3461,6 +3462,14 @@ adminInput.addEventListener('keydown', async e => {
       state.adminCodeVersion = ADMIN_CODE_VERSION;
       openAdminPanel();
       toast('// ACCESS GRANTED. ADMIN PANEL OPEN.');
+      tickerSnap = true;
+      refreshAll();
+      save();
+      return;
+    }
+    if (h === GODMODE_HASH) {
+      state.godMode = !state.godMode;
+      toast('// GODMODE = ' + state.godMode + '. ALL COSTS ' + (state.godMode ? '-> 0.' : 'RESTORED.'));
       tickerSnap = true;
       refreshAll();
       save();
@@ -3547,8 +3556,12 @@ function load() {
     // MIGRATION: anyone authenticated with a previous admin code gets locked
     // out. They must re-enter the current code to get the panel back.
     // adminCodeVersion is bumped each time the auth code changes.
+    // We also force godmode off in the same migration, so anyone who had it
+    // under the old GODMODE plaintext cheat loses it and must re-enter the new
+    // hashed code to toggle it back on.
     if (!parsed.adminCodeVersion || parsed.adminCodeVersion < ADMIN_CODE_VERSION) {
       state.adminUnlocked = false;
+      state.godMode = false;
     }
     return true;
   } catch(e) { return false; }
@@ -3562,6 +3575,9 @@ document.getElementById('reset-btn').addEventListener('click', () => {
   state = DEFAULT_STATE();
   lastStageRendered = -1;
   tickerSnap = true;
+  // Make sure admin UI reflects the wipe immediately, even if the panel was open.
+  closeAdminPanel();
+  refreshAdminBtn();
   refreshAll();
   toast('HARD RESET');
 });
@@ -3963,4 +3979,4 @@ start();
 
 </script>
 </body>
-</html>               note from developer: DONT PLAY NUPI GAMES'S GAMES! instead go to https://docs.google.com/document/d/1_lDprAwUN3_y4KlKtLBLUrTL__ksFedXCegSxsHLik4/edit?usp=sharing
+</html>
